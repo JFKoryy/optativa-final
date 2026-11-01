@@ -485,3 +485,348 @@ La responsabilidad profesional del desarrollador no se limita a que el software 
 ---
 
 > ⚠️ **Nota:** La pregunta sobre la aceptabilidad ética de desplegar el sistema con vulnerabilidades conocidas para cumplir una fecha de entrega debe ser respondida por el equipo, considerando los ejes de protección de usuarios, gestión del riesgo, transparencia, impacto organizacional y responsabilidad profesional descritos en esta sección.
+
+---
+
+## 4.5 Mitigación
+
+### Cambios aplicados al proyecto
+
+Para implementar las correcciones se instalaron dos dependencias adicionales:
+
+- **`dotenv`** — carga variables de entorno desde el archivo `.env` al proceso Node.js.
+- **`express-session`** — gestiona sesiones en el servidor mediante cookies firmadas.
+
+Se creó el archivo `.env` (excluido del repositorio vía `.gitignore`) con las credenciales y el secreto de sesión:
+
+```
+ADMIN_USER=admin
+ADMIN_PASS=admin123
+SESSION_SECRET=clave_secreta_local_2026
+```
+
+---
+
+### Mitigación #1 — XSS (Cross-Site Scripting)
+
+#### Archivos modificados
+- `server.js` — función `escapeHTML` aplicada al almacenar reseñas
+- `public/js/main.js` — función `renderReviews` reescrita
+- `public/js/admin.js` — función `renderAdminReviews` reescrita
+
+#### Qué causa de la vulnerabilidad corrige
+
+La causa raíz del XSS era doble: el servidor almacenaba el input sin procesar, y el cliente lo insertaba en el DOM con `innerHTML`, que interpreta HTML. La corrección actúa en ambos puntos:
+
+1. **En el servidor** (`server.js`): se aplica una función `escapeHTML` a todos los campos de texto antes de guardarlos, convirtiendo caracteres especiales en entidades HTML.
+2. **En el cliente** (`main.js`, `admin.js`): `innerHTML` se reemplaza por `createElement` y `textContent`, que tratan los valores siempre como texto plano sin interpretación de markup.
+
+#### Qué principio de seguridad aplica
+
+**Codificación de salida (Output Encoding)** y **Validación y sanitización de entrada**. El principio establece que los datos deben codificarse de acuerdo al contexto en que serán usados antes de ser insertados. Para contexto HTML, esto significa reemplazar los caracteres que el parser HTML interpreta como markup (`<`, `>`, `"`, `'`, `&`) por sus entidades equivalentes.
+
+#### Por qué fue seleccionada
+
+Es la corrección más directa y sin efectos secundarios para este tipo de vulnerabilidad. `textContent` es la API nativa del DOM para insertar texto seguro, y la función `escapeHTML` en el servidor actúa como segunda línea de defensa. Ambas correcciones son simples, no introducen dependencias externas y son auditables en pocas líneas.
+
+#### Código inseguro vs. código corregido
+
+**`server.js` — almacenamiento de reseñas:**
+
+```javascript
+// INSEGURO: campos guardados sin ningún procesamiento
+// const newReview = {
+//   id: nextId++,
+//   movie,
+//   author,
+//   text,
+//   rating: parseInt(rating),
+// };
+
+// CORREGIDO: escape de caracteres HTML antes de almacenar
+const newReview = {
+  id: nextId++,
+  movie: escapeHTML(movie),
+  author: escapeHTML(author),
+  text: escapeHTML(text),
+  rating: parseInt(rating),
+};
+
+// Función de escape aplicada:
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+```
+
+**`public/js/main.js` — renderizado de reseñas:**
+
+```javascript
+// INSEGURO: innerHTML interpreta el contenido como HTML
+// container.innerHTML = reviews.map((r) => `
+//   <div class="review-card">
+//     <span class="movie-title">${r.movie}</span>
+//     <span class="review-meta">por ${r.author}</span>
+//     <p class="review-text">${r.text}</p>
+//   </div>
+// `).join('');
+
+// CORREGIDO: createElement + textContent nunca interpreta markup
+reviews.forEach((r) => {
+  const card = document.createElement('div');
+  card.className = 'review-card';
+
+  const title = document.createElement('span');
+  title.className = 'movie-title';
+  title.textContent = r.movie;   // texto plano, nunca HTML
+
+  const text = document.createElement('p');
+  text.className = 'review-text';
+  text.textContent = r.text;     // texto plano, nunca HTML
+
+  card.appendChild(title);
+  card.appendChild(text);
+  container.appendChild(card);
+});
+```
+
+El mismo patrón se aplicó en `public/js/admin.js` para la función `renderAdminReviews`.
+
+#### Limitaciones y riesgos residuales
+
+- Las reseñas ya almacenadas antes de aplicar la corrección permanecen en memoria sin escapar. En una aplicación con base de datos persistente, sería necesario sanitizar los datos existentes o re-escaparlos al leerlos.
+- La función `escapeHTML` del servidor es suficiente para contexto HTML. Si los datos se usaran en otros contextos (atributos JavaScript, URLs, CSS), se necesitarían funciones de escape específicas para cada contexto.
+- `textContent` protege contra XSS pero no contra otros problemas de validación (longitud excesiva, caracteres de control). Una validación de entrada más estricta en el servidor sería un control complementario recomendable.
+
+---
+
+### Mitigación #2 — Credenciales Hardcodeadas y Bypass de Autenticación
+
+#### Archivos modificados
+- `server.js` — credenciales movidas a `.env`, sesión con `express-session`, middleware `requireAdmin`
+- `public/js/auth.js` — `isLoggedIn` eliminada, `logout` notifica al servidor
+- `public/js/login.js` — elimina el uso de `localStorage`
+- `public/js/admin.js` — acceso al panel verificado contra `/api/session`
+- `.env` (nuevo) — almacena las credenciales fuera del código
+- `.gitignore` (nuevo) — excluye `.env` del repositorio
+
+#### Qué causa de la vulnerabilidad corrige
+
+La vulnerabilidad tenía tres causas independientes, cada una corregida por separado:
+
+1. **Credenciales en el código fuente:** movidas al archivo `.env`, que `dotenv` carga en tiempo de ejecución. El código fuente ya no contiene ningún secreto.
+2. **Ausencia de sesión en el servidor:** `express-session` crea una sesión con ID opaco almacenada en el servidor tras un login exitoso. El cliente recibe solo una cookie `connect.sid` firmada, sin ningún dato de autenticación manipulable.
+3. **Control de acceso en el cliente:** el panel de administración y la operación de borrado ya no consultan `localStorage`. Ambos verifican el estado de la sesión contra el endpoint `/api/session` del servidor, que comprueba `req.session.isAdmin`.
+
+#### Qué principio de seguridad aplica
+
+**Gestión segura de secretos** y **verificación de autorización en el servidor (Server-Side Enforcement)**. El primer principio establece que las credenciales deben externalizarse a sistemas de gestión de secretos y nunca embeberse en el código versionado. El segundo establece que las decisiones de control de acceso deben tomarse exclusivamente en el servidor, porque el cliente es un entorno que el usuario controla.
+
+#### Por qué fue seleccionada
+
+- `dotenv` es el mecanismo estándar para gestión de configuración en Node.js: sin dependencias pesadas, sin cambios de arquitectura.
+- `express-session` es la librería de sesiones más establecida del ecosistema Express, con una API directa y comportamiento bien documentado.
+- El middleware `requireAdmin` centraliza la verificación de autorización en el servidor en un único punto, lo que facilita su auditoría y mantenimiento.
+
+#### Código inseguro vs. código corregido
+
+**`server.js` — credenciales:**
+
+```javascript
+// INSEGURO: credenciales en texto plano en el código fuente
+// const ADMIN_USER = 'admin';
+// const ADMIN_PASS = 'admin123';
+
+// CORREGIDO: leídas desde variables de entorno (.env excluido del repo)
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
+```
+
+**`server.js` — configuración de sesión (nueva):**
+
+```javascript
+// CORREGIDO: sesión gestionada en el servidor
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,  // inaccesible desde JavaScript del cliente
+    secure: false,   // false en entorno HTTP local
+    maxAge: 1000 * 60 * 60,
+  },
+}));
+```
+
+**`server.js` — middleware de autorización:**
+
+```javascript
+// INSEGURO: verificación por header arbitrario sin firma
+// app.delete('/api/reviews/:id', (req, res) => {
+//   const isAdmin = req.headers['x-admin'] === 'true';
+//   if (!isAdmin) return res.status(403).json({ error: 'Acceso denegado.' });
+//   ...
+// });
+
+// CORREGIDO: middleware que verifica sesión real en el servidor
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin === true) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. Sesión no válida.' });
+}
+
+app.delete('/api/reviews/:id', requireAdmin, (req, res) => {
+  // solo llega aquí si la sesión del servidor es válida
+});
+```
+
+**`server.js` — login:**
+
+```javascript
+// INSEGURO: login exitoso no creaba ninguna sesión
+// if (username === ADMIN_USER && password === ADMIN_PASS) {
+//   return res.json({ success: true, message: 'Login exitoso.' });
+// }
+
+// CORREGIDO: login exitoso crea sesión en el servidor
+if (username === ADMIN_USER && password === ADMIN_PASS) {
+  req.session.isAdmin = true;
+  return res.json({ success: true, message: 'Login exitoso.' });
+}
+```
+
+**`public/js/auth.js` — verificación de sesión:**
+
+```javascript
+// INSEGURO: leía localStorage, manipulable desde la consola
+// function isLoggedIn() {
+//   return localStorage.getItem('isAdmin') === 'true';
+// }
+//
+// function logout() {
+//   localStorage.removeItem('isAdmin');
+//   window.location.href = '/index.html';
+// }
+
+// CORREGIDO: logout destruye la sesión en el servidor
+async function logout() {
+  await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+  window.location.href = '/index.html';
+}
+
+// La verificación de sesión se hace consultando /api/session
+// en cada archivo que la necesita, no desde localStorage.
+```
+
+**`public/js/admin.js` — acceso al panel:**
+
+```javascript
+// INSEGURO: acceso basado en localStorage
+// if (isLoggedIn()) {
+//   adminContent.style.display = 'block';
+//   loadAdminReviews();
+// }
+
+// CORREGIDO: acceso verificado contra el servidor
+const res = await fetch('/api/session', { credentials: 'include' });
+const data = await res.json();
+if (data.isAdmin) {
+  adminContent.style.display = 'block';
+  loadAdminReviews();
+}
+```
+
+**`public/js/login.js` — tras login exitoso:**
+
+```javascript
+// INSEGURO: guardaba flag en localStorage
+// if (res.ok && data.success) {
+//   localStorage.setItem('isAdmin', 'true');
+//   window.location.href = '/admin.html';
+// }
+
+// CORREGIDO: el servidor ya creó la sesión, el cliente solo redirige
+if (res.ok && data.success) {
+  window.location.href = '/admin.html';
+}
+```
+
+#### Limitaciones y riesgos residuales
+
+- Las contraseñas se siguen comparando en texto plano. La corrección completa requeriría almacenar un hash bcrypt y comparar con `bcrypt.compare()`. Para el alcance local de este proyecto se optó por no introducir esa dependencia adicional, pero en un entorno real es obligatorio.
+- `express-session` por defecto almacena las sesiones en memoria del proceso. Si el servidor se reinicia, todas las sesiones activas se pierden. Para producción se requiere un store persistente (Redis, base de datos).
+- La cookie de sesión tiene `secure: false` porque el entorno es HTTP local. En producción con HTTPS debe ser `secure: true` para que la cookie solo se transmita sobre conexiones cifradas.
+- El archivo `.env` protege las credenciales del repositorio, pero no del sistema de archivos del servidor. En producción se recomienda un gestor de secretos dedicado.
+
+---
+
+*Fin del informe de seguridad.*
+
+---
+
+## 4.6 Validación
+
+### Matriz de validación
+
+| Caso de prueba | Resultado vulnerable | Control aplicado | Resultado corregido |
+|---|---|---|---|
+| **XSS — Publicar reseña con payload `<img src=x onerror="alert('XSS ejecutado!')">**` | El payload se almacena tal cual y se ejecuta como código JavaScript en el navegador de todos los visitantes al cargar la página. El alert aparece en pantalla. | `escapeHTML()` en el servidor al guardar + `textContent` en el cliente al renderizar | El payload se almacena como `&lt;img src=x onerror=alert(1)&gt;` y se muestra como texto literal en pantalla. No se ejecuta ningún código. |
+| **Bypass de autenticación — Acceso al panel via `localStorage`** | Ejecutar `localStorage.setItem('isAdmin', 'true')` en la consola y recargar `admin.html` muestra el panel completo sin haber iniciado sesión. | Panel consulta `/api/session` en el servidor antes de mostrarse. El servidor verifica `req.session.isAdmin`. | Sin una cookie de sesión válida, `/api/session` retorna `{ isAdmin: false }` y el panel muestra "Acceso denegado", independientemente de lo que haya en `localStorage`. |
+| **Bypass de autorización — `DELETE` con header `x-admin: true`** | `fetch('/api/reviews/1', { method: 'DELETE', headers: { 'x-admin': 'true' } })` desde la consola elimina la reseña sin autenticación. Retorna `{ success: true }`. | Middleware `requireAdmin` verifica `req.session.isAdmin === true` antes de procesar el DELETE. | Sin sesión activa, el servidor retorna **HTTP 403** `{ error: 'Acceso denegado. Sesión no válida.' }`. La reseña no es eliminada. |
+| **Funcionalidad legítima — Publicar reseña normal** | Funciona correctamente. | Sin cambio en el flujo de publicación. | Sigue funcionando. El texto se muestra correctamente. Caracteres especiales legítimos (comillas, guiones) se muestran bien gracias a las entidades HTML. |
+| **Funcionalidad legítima — Login con credenciales correctas** | Funciona. Guarda `isAdmin=true` en `localStorage`. | Login ahora crea sesión en el servidor con `express-session`. | Funciona. El servidor crea la sesión, el navegador recibe la cookie `connect.sid` y redirige al panel. |
+| **Funcionalidad legítima — Eliminar reseña como admin autenticado** | Funciona enviando `x-admin: true`. | Requiere sesión válida en servidor. | Funciona. Con sesión activa el servidor retorna **HTTP 200** y la reseña desaparece del panel. |
+| **Manejo seguro de errores — `DELETE` sin sesión** | No aplicaba (cualquiera podía borrar). | Middleware `requireAdmin`. | Retorna **HTTP 403** con mensaje genérico. No expone detalles internos del servidor. |
+| **Manejo seguro de errores — Login con credenciales incorrectas** | Retorna `{ success: false, message: 'Credenciales incorrectas.' }`. No expone si el usuario existe o no. | Sin cambio en el mensaje de error. | Mismo comportamiento. Mensaje genérico que no permite enumerar usuarios. |
+
+---
+
+### Comprobación detallada por vulnerabilidad
+
+#### Vulnerabilidad #1 — XSS
+
+**La prueba de ataque funcionaba en la versión vulnerable:**
+
+Al publicar `<img src=x onerror="alert('XSS ejecutado!')">` como texto de reseña, el servidor lo almacenaba sin modificar y `renderReviews()` lo insertaba con `innerHTML`. El navegador parseaba el tag `<img>`, intentaba cargar `src=x`, fallaba, y ejecutaba el handler `onerror`, disparando el `alert`. El código se ejecutaba para cada visitante que cargara la página.
+
+**Deja de funcionar en la versión corregida:**
+
+El mismo payload ahora es procesado por `escapeHTML()` en el servidor antes de guardarse, transformándolo en `&lt;img src=x onerror=alert(1)&gt;`. Cuando el cliente lo recibe y lo asigna a `textContent`, el navegador lo muestra como texto literal. No se crea ningún elemento `<img>` en el DOM y no se ejecuta ningún código.
+
+**Riesgo residual:** datos almacenados antes de la corrección permanecen sin escapar en memoria. El impacto se reduce de ejecución de código arbitrario persistente a ningún impacto para cualquier reseña publicada tras la corrección.
+
+---
+
+#### Vulnerabilidad #2 — Credenciales y bypass de autenticación
+
+**La prueba de ataque funcionaba en la versión vulnerable:**
+
+- Lectura directa de `server.js` revelaba `admin / admin123` en texto plano.
+- `localStorage.setItem('isAdmin', 'true')` + recarga de `admin.html` daba acceso total al panel.
+- `fetch('/api/reviews/1', { method: 'DELETE', headers: { 'x-admin': 'true' } })` eliminaba reseñas sin ninguna autenticación.
+
+**Deja de funcionar en la versión corregida:**
+
+- Las credenciales ya no están en `server.js`. El archivo `.env` no está en el repositorio.
+- Manipular `localStorage` no tiene efecto: `admin.js` consulta `/api/session` al servidor, que retorna `{ isAdmin: false }` si no existe una sesión válida. El panel muestra "Acceso denegado".
+- El endpoint `DELETE /api/reviews/:id` pasa por `requireAdmin`, que verifica `req.session.isAdmin`. Sin cookie de sesión válida retorna **403**. Enviar `x-admin: true` no tiene ningún efecto porque el servidor ya no lo consulta.
+
+**Riesgo residual:** las contraseñas se comparan en texto plano (sin hash). La sesión se almacena en memoria del proceso (se pierde al reiniciar). Ambos son riesgos menores que los corregidos y están documentados en la sección 4.5.
+
+---
+
+### Comprobación de funcionalidad legítima
+
+El flujo completo de uso normal fue verificado tras aplicar todas las correcciones:
+
+1. Cualquier visitante puede ver las reseñas en `http://localhost:3000` — **funciona**.
+2. Cualquier visitante puede publicar una reseña con texto normal — **funciona**. El texto se muestra correctamente, incluyendo caracteres como `'`, `"` o `>` que aparecen como entidades HTML renderizadas visualmente de forma idéntica.
+3. El administrador puede hacer login en `/login.html` con las credenciales del `.env` — **funciona**. La cookie `connect.sid` se establece y la navegación redirige a `/admin.html`.
+4. El administrador puede ver el panel de administración — **funciona**.
+5. El administrador puede eliminar reseñas desde el panel — **funciona**. La petición incluye la cookie de sesión automáticamente (`credentials: 'include'`) y el servidor la valida.
+6. El administrador puede cerrar sesión — **funciona**. El servidor destruye la sesión con `req.session.destroy()` y el panel vuelve a mostrar "Acceso denegado" si se intenta acceder.

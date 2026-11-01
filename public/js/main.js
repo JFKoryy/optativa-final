@@ -1,64 +1,102 @@
 /**
  * main.js — Página principal: carga y publicación de reseñas
- *
- * VULNERABILIDAD #1 — XSS (Cross-Site Scripting):
- * La función renderReviews() inserta el contenido de las reseñas
- * usando innerHTML. Si una reseña contiene HTML o JavaScript,
- * el navegador lo interpreta y ejecuta.
- *
- * Ejemplo de payload: <img src=x onerror="alert('XSS!')">
  */
 
-// Genera estrellas en texto
 function stars(n) {
   return '⭐'.repeat(n);
 }
 
-/**
- * Renderiza la lista de reseñas en el DOM.
- *
- * ⚠️ VULNERABILIDAD XSS: los campos movie, author y text se insertan
- * con innerHTML sin escapar. Un atacante puede inyectar código HTML/JS.
- */
+// ============================================================
+// VULNERABILIDAD #1 — CÓDIGO INSEGURO:
+//
+// function renderReviews(reviews) {
+//   const container = document.getElementById('reviews-container');
+//   if (!container) return;
+//   if (reviews.length === 0) {
+//     container.innerHTML = '<p class="loading">No hay reseñas aún. ¡Sé el primero!</p>';
+//     return;
+//   }
+//   container.innerHTML = reviews
+//     .map(
+//       (r) => `
+//       <div class="review-card">
+//         <div class="review-header">
+//           <span class="movie-title">${r.movie}</span>
+//           <span class="review-meta">por ${r.author}</span>
+//         </div>
+//         <p class="review-text">${r.text}</p>
+//         <span class="review-rating">${stars(r.rating)}</span>
+//       </div>
+//     `
+//     )
+//     .join('');
+// }
+//
+// innerHTML interpreta HTML, por lo que cualquier payload
+// inyectado en los campos de la reseña era ejecutado por el
+// navegador al renderizar la lista.
+// ============================================================
+
+// CORRECCIÓN: se construye el DOM con createElement y textContent.
+// textContent trata el valor siempre como texto plano, nunca
+// como markup, eliminando la posibilidad de ejecución de código.
 function renderReviews(reviews) {
   const container = document.getElementById('reviews-container');
   if (!container) return;
 
+  container.innerHTML = '';
+
   if (reviews.length === 0) {
-    container.innerHTML = '<p class="loading">No hay reseñas aún. ¡Sé el primero!</p>';
+    const p = document.createElement('p');
+    p.className = 'loading';
+    p.textContent = 'No hay reseñas aún. ¡Sé el primero!';
+    container.appendChild(p);
     return;
   }
 
-  // ⚠️ innerHTML interpreta HTML — no usar con datos no confiables
-  container.innerHTML = reviews
-    .map(
-      (r) => `
-      <div class="review-card">
-        <div class="review-header">
-          <span class="movie-title">${r.movie}</span>
-          <span class="review-meta">por ${r.author}</span>
-        </div>
-        <p class="review-text">${r.text}</p>
-        <span class="review-rating">${stars(r.rating)}</span>
-      </div>
-    `
-    )
-    .join('');
+  reviews.forEach((r) => {
+    const card = document.createElement('div');
+    card.className = 'review-card';
+
+    const header = document.createElement('div');
+    header.className = 'review-header';
+
+    const title = document.createElement('span');
+    title.className = 'movie-title';
+    title.textContent = r.movie;
+
+    const meta = document.createElement('span');
+    meta.className = 'review-meta';
+    meta.textContent = `por ${r.author}`;
+
+    const text = document.createElement('p');
+    text.className = 'review-text';
+    text.textContent = r.text;
+
+    const rating = document.createElement('span');
+    rating.className = 'review-rating';
+    rating.textContent = stars(r.rating);
+
+    header.appendChild(title);
+    header.appendChild(meta);
+    card.appendChild(header);
+    card.appendChild(text);
+    card.appendChild(rating);
+    container.appendChild(card);
+  });
 }
 
-// Carga las reseñas desde la API
 async function loadReviews() {
   try {
     const res = await fetch('/api/reviews');
     const reviews = await res.json();
     renderReviews(reviews);
   } catch (err) {
-    document.getElementById('reviews-container').innerHTML =
-      '<p class="loading">Error al cargar las reseñas.</p>';
+    const container = document.getElementById('reviews-container');
+    if (container) container.textContent = 'Error al cargar las reseñas.';
   }
 }
 
-// Manejo del formulario de nueva reseña
 document.addEventListener('DOMContentLoaded', () => {
   loadReviews();
 
@@ -88,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         msg.textContent = '¡Reseña publicada exitosamente!';
         msg.style.display = 'block';
         form.reset();
-        loadReviews(); // Recarga para mostrar la nueva reseña (y ejecutar cualquier payload XSS)
+        loadReviews();
         setTimeout(() => (msg.style.display = 'none'), 3000);
       } else {
         const data = await res.json();
