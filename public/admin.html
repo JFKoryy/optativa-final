@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel Admin — CineReseñas</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-content">
+        <h1>🎬 CineReseñas</h1>
+        <nav>
+          <a href="/index.html">Inicio</a>
+          <span id="nav-admin">
+            <a href="/admin.html">Panel Admin</a>
+            <button id="btn-logout" onclick="logout()">Cerrar sesión</button>
+          </span>
+          <a href="/login.html" id="nav-login" style="display:none">Login Admin</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h3>🛠️ Panel de Administración</h3>
+        <p class="subtitle">Gestiona todas las reseñas publicadas en la plataforma.</p>
+
+        <!-- 
+          VULNERABILIDAD #2 — Bypass de autenticación:
+          Esta página verifica el estado de autenticación únicamente
+          en el cliente (localStorage). El servidor no valida sesiones.
+          Cualquiera puede acceder navegando directamente a /admin.html
+          o seteando localStorage.isAdmin = "true" en la consola.
+        -->
+        <div id="admin-check">
+          <p class="loading">Verificando acceso...</p>
+        </div>
+
+        <div id="admin-content" style="display:none">
+          <div id="admin-reviews-container"></div>
+        </div>
+
+        <div id="admin-denied" style="display:none" class="error-box">
+          <p>⛔ Acceso denegado. Debes <a href="/login.html">iniciar sesión</a> como administrador.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>CineReseñas &copy; 2026 — Proyecto pedagógico de seguridad web</p>
+    </footer>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/admin.js"></script>
+  </body>
+</html>
