@@ -786,6 +786,56 @@ if (res.ok && data.success) {
 
 ---
 
+### Evidencia fotográfica
+
+#### XSS — versión corregida
+
+**Payload ingresado en el formulario:**
+
+![Formulario con payload XSS ingresado como reseña](public/evidencias/1.png)
+
+**Resultado: payload renderizado como texto literal, sin ejecución de código:**
+
+![Reseña con payload visible como texto escapado, sin alert](public/evidencias/1.1.png)
+
+---
+
+#### Bypass de autenticación — versión corregida
+
+**localStorage seteado con `isAdmin=true` pero el panel sigue mostrando "Acceso denegado":**
+
+![Panel de admin muestra acceso denegado a pesar de localStorage manipulado](public/evidencias/2.png)
+
+---
+
+#### Bypass de autorización — versión corregida
+
+**DELETE sin sesión retorna HTTP 403:**
+
+![Consola mostrando 403 Forbidden y mensaje de acceso denegado](public/evidencias/3.png)
+
+---
+
+#### Funcionalidad legítima — login y acceso al panel
+
+**Panel de administración cargado correctamente tras login con credenciales válidas:**
+
+![Panel de administración visible tras autenticación legítima](public/evidencias/4.png)
+
+---
+
+#### Funcionalidad legítima — eliminar reseña como admin autenticado
+
+**Confirmación de eliminación:**
+
+![Diálogo de confirmación antes de eliminar la reseña](public/evidencias/5.png)
+
+**Panel tras eliminar: reseña eliminada correctamente:**
+
+![Panel de administración con la reseña eliminada](public/evidencias/5.1.png)
+
+---
+
 ### Comprobación detallada por vulnerabilidad
 
 #### Vulnerabilidad #1 — XSS
