@@ -187,13 +187,9 @@ Lo mismo ocurre en **`public/js/admin.js`** dentro de `renderAdminReviews()`, do
 
 ![Estado inicial — página de reseñas sin contenido malicioso](public/evidencias/Estado%20inicial%20-%20XSS.png)
 
-**Evidencia — Inyección del payload en el formulario:**
+**Evidencia — Payload inyectado y XSS ejecutado:**
 
-![Ingreso del payload JavaScript en el campo de reseña](public/evidencias/inyecci%C3%B3n%20de%20c%C3%B3digo%20js.png)
-
-**Evidencia — Ejecución del XSS en el navegador:**
-
-![Alert ejecutado en el navegador como resultado del XSS](public/evidencias/XSS.png)
+![Formulario con payload y alert ejecutado en el navegador](public/evidencias/XSS.png)
 
 #### Origen de la vulnerabilidad
 
@@ -308,6 +304,10 @@ document.addEventListener('DOMContentLoaded', () => {
 **Evidencia — Intento de acceso directo al panel por URL:**
 
 ![Acceso directo a admin.html por URL sin haber iniciado sesión](public/evidencias/Intento%20de%20inicio%20de%20secci%C3%B3n%20por%20URL.png)
+
+**Evidencia — Ejecución del bypass: setItem en la consola del navegador:**
+
+![localStorage.setItem('isAdmin', 'true') ejecutado en la consola](public/evidencias/inyecci%C3%B3n%20de%20c%C3%B3digo%20js.png)
 
 **Evidencia — Bypass exitoso: panel de admin accesible sin autenticación:**
 
