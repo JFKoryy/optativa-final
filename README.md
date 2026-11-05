@@ -372,7 +372,7 @@ Abrir el navegador en: **http://localhost:3000**
 
 ---
 
-*Documento generado para uso exclusivamente pedagógico.*
+
 
 ---
 
@@ -484,7 +484,19 @@ La responsabilidad profesional del desarrollador no se limita a que el software 
 
 ---
 
-> ⚠️ **Nota:** La pregunta sobre la aceptabilidad ética de desplegar el sistema con vulnerabilidades conocidas para cumplir una fecha de entrega debe ser respondida por el equipo, considerando los ejes de protección de usuarios, gestión del riesgo, transparencia, impacto organizacional y responsabilidad profesional descritos en esta sección.
+### ¿Sería éticamente aceptable desplegar el sistema con vulnerabilidades conocidas para cumplir una fecha de entrega?
+
+No. Desplegar un sistema con vulnerabilidades conocidas, aunque sea con la intención de corregirlas después, no es éticamente aceptable. La razón central es que en el momento del despliegue el riesgo deja de ser hipotético y se transfiere a los usuarios sin su consentimiento.
+
+**Protección de usuarios.** Los usuarios que interactúan con el sistema no tienen forma de saber que están expuestos. En este caso concreto, cualquier visitante podría ser víctima de un XSS persistente ejecutado por otro usuario, y cualquier persona podría eliminar contenido sin autorización. El equipo conoce ese riesgo; los usuarios no. Esa asimetría de información convierte el despliegue en una decisión que afecta a terceros sin darles la posibilidad de protegerse.
+
+**Gestión del riesgo.** Ambas vulnerabilidades fueron clasificadas como riesgo crítico: probabilidad alta, impacto alto. Desplegar con ese nivel de riesgo conocido no es gestión del riesgo, es traslado del riesgo hacia los usuarios. Una fecha de entrega no cambia la probabilidad de explotación ni reduce el impacto.
+
+**Transparencia.** Si el equipo decide desplegar de todas formas, la única forma de hacerlo con algún grado de responsabilidad sería informando explícitamente a los usuarios y a la organización del estado de seguridad del sistema. En la práctica esto rara vez ocurre, porque hacerlo explícito evidencia la decisión.
+
+**Impacto organizacional.** Una vez que una vulnerabilidad es explotada en producción, el costo no se limita a la corrección técnica. Incluye la pérdida de confianza de los usuarios, posibles obligaciones legales según la jurisdicción, y el costo de auditar qué datos o acciones fueron comprometidos durante el tiempo de exposición.
+
+**Responsabilidad profesional.** El desarrollador que despliega código con vulnerabilidades conocidas no puede alegar desconocimiento. La presión de una fecha de entrega es una razón comprensible, pero no es una justificación técnica ni ética. La responsabilidad profesional incluye comunicar el riesgo a tiempo, no ocultarlo detrás de una entrega.
 
 ---
 
